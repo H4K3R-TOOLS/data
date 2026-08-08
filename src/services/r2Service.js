@@ -44,6 +44,14 @@ export const groupIntoChunks = (files, chunkSize = CHUNK_SIZE) => {
 export const fetchR2Objects = async () => {
   const res = await fetch('/api/list-files');
 
+  if (res.status === 403) {
+    const body = await res.json().catch(() => ({}));
+    if (body.disabled) {
+      return { disabled: true, files: [], totalSize: 0, formattedTotalSize: '0 B', fileCount: 0 };
+    }
+    throw new Error('Access denied');
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Server error ${res.status}`);
@@ -51,7 +59,6 @@ export const fetchR2Objects = async () => {
 
   const data = await res.json();
 
-  // Attach formatted size to each file
   const files = (data.files || []).map(f => ({
     ...f,
     formattedSize: formatBytes(f.size),
@@ -63,5 +70,7 @@ export const fetchR2Objects = async () => {
     formattedTotalSize: formatBytes(data.totalSize || 0),
     fileCount: data.fileCount || 0,
     bucket: data.bucket || '',
+    dataLimitGB: data.dataLimitGB || 0,
+    disabled: false,
   };
 };
