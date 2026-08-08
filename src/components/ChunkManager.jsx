@@ -1,253 +1,155 @@
 import React, { useState } from 'react';
-import { Archive, Download, FileArchive, CheckCircle, FileText, ChevronDown, ChevronUp, AlertCircle, Loader2 } from 'lucide-react';
-import JSZip from 'jszip';
-import confetti from 'canvas-confetti';
+import { Download, ChevronDown, ChevronUp, Link2, FileText, Loader2, ExternalLink } from 'lucide-react';
 import { formatBytes } from '../services/r2Service';
 
-export default function ChunkManager({ chunks, isMock }) {
-  const [downloadingChunkId, setDownloadingChunkId] = useState(null);
-  const [downloadProgress, setDownloadProgress] = useState(0);
-  const [downloadStatusText, setDownloadStatusText] = useState('');
-  const [expandedChunkId, setExpandedChunkId] = useState(chunks[0]?.id || null);
+/**
+ * For 5GB chunks we offer two options:
+ * 1. Download link-list (.txt) — user pastes in IDM / wget / aria2 to batch-download
+ * 2. Sequential browser downloads — triggers <a download> for each file one by one
+ *
+ * We do NOT try to zip files in the browser — fetching 5GB to RAM would crash the tab.
+ */
+export default function ChunkManager({ chunks }) {
+  const [expanded, setExpanded] = useState(chunks[0]?.id || null);
+  const [downloading, setDownloading] = useState(null);
 
-  // Trigger JSZip generation for a specific 5 GB chunk
-  const handleDownloadChunkZip = async (chunk) => {
-    try {
-      setDownloadingChunkId(chunk.id);
-      setDownloadProgress(5);
-      setDownloadStatusText(`Initializing 5 GB Bundle (Part ${chunk.index})...`);
+  // Export a plain-text list of direct URLs for this chunk (IDM/wget compatible)
+  const downloadLinkFile = (chunk) => {
+    const lines = chunk.files.map(f => f.url || `# ${f.name} (no public URL)`).join('\n');
+    const blob = new Blob([lines], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `r2_part_${chunk.index}_urls.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
-      const zip = new JSZip();
-      const folder = zip.folder(`R2_Bucket_Gallery_Part_${chunk.index}`);
+  // Trigger sequential browser downloads for every file in chunk
+  const downloadAllFiles = async (chunk) => {
+    setDownloading(chunk.id);
+    const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-      let completedFiles = 0;
-      const totalFiles = chunk.files.length;
-
-      // Add files to Zip archive
-      for (const file of chunk.files) {
-        setDownloadStatusText(`Packaging (${completedFiles + 1}/${totalFiles}): ${file.name}`);
-        
-        try {
-          if (file.url && !isMock) {
-            // Fetch actual file content if live URL is available
-            const response = await fetch(file.url);
-            if (response.ok) {
-              const blob = await response.blob();
-              folder.file(file.name, blob);
-            } else {
-              folder.file(file.name, `Sample content for file: ${file.name}\nSize: ${file.formattedSize}`);
-            }
-          } else {
-            // In demo mode or if fetch fails, create a structured manifest placeholder entry
-            const demoContent = `Cloudflare R2 Bucket Archive File\nName: ${file.name}\nSize: ${file.formattedSize}\nType: ${file.type}\nLast Modified: ${file.lastModified}\nPublic URL: ${file.url}`;
-            folder.file(file.name, demoContent);
-          }
-        } catch (err) {
-          console.warn(`Could not fetch ${file.name}, writing metadata placeholder`, err);
-          folder.file(file.name, `R2 File: ${file.name}\nOriginal Size: ${file.formattedSize}`);
-        }
-
-        completedFiles++;
-        setDownloadProgress(Math.round((completedFiles / totalFiles) * 80));
-      }
-
-      setDownloadStatusText('Compressing Zip Package...');
-      setDownloadProgress(90);
-
-      // Generate Zip blob
-      const content = await zip.generateAsync({ type: 'blob' }, (metadata) => {
-        setDownloadProgress(90 + Math.round(metadata.percent * 0.1));
-      });
-
-      // Trigger Browser Download
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(content);
-      link.download = `Cloudflare_R2_Part_${chunk.index}_5GB_Bundle.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // Celebratory Effect
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.7 }
-      });
-
-      setDownloadStatusText('Download Started Successfully!');
-      setDownloadProgress(100);
-
-    } catch (err) {
-      console.error('Error generating 5GB chunk zip:', err);
-      alert(`Failed to package 5 GB bundle: ${err.message}`);
-    } finally {
-      setTimeout(() => {
-        setDownloadingChunkId(null);
-        setDownloadProgress(0);
-        setDownloadStatusText('');
-      }, 1500);
+    for (const file of chunk.files) {
+      if (!file.url) continue;
+      const a = document.createElement('a');
+      a.href = file.url;
+      a.download = file.name;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Small delay so browser doesn't block multiple tabs
+      await delay(600);
     }
+
+    setDownloading(null);
   };
 
-  // Download Manifest JSON for a 5 GB chunk
-  const handleDownloadManifest = (chunk) => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(chunk, null, 2));
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute("href", dataStr);
-    dlAnchor.setAttribute("download", `r2_chunk_${chunk.index}_manifest.json`);
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
-  };
-
-  if (!chunks || chunks.length === 0) {
+  if (!chunks.length) {
     return (
-      <div className="glass-panel p-8 text-center text-slate-400">
-        <FileArchive className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-        <p>No 5 GB chunk bundles available. Add objects to your R2 bucket to generate packages.</p>
-      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>
+        No files found in bucket.
+      </p>
     );
   }
 
   return (
-    <div className="space-y-6">
-      
-      {/* Informational Banner */}
-      <div className="glass-panel p-4 bg-orange-950/20 border-orange-500/30 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-300 leading-relaxed">
-          <span className="font-bold text-orange-300">5 GB Partitioning System:</span> Total bucket data is automatically grouped into ~5 GB chunks so you can download large R2 datasets without browser timeouts or bandwidth limits.
-          {isMock && (
-            <span className="ml-1 text-amber-400">
-              (Currently operating in 30GB Simulation Mode - Set your R2_SECRET_ACCESS_KEY in ENV for live downloads).
-            </span>
-          )}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+      {/* Info notice */}
+      <div className="notice" style={{ marginBottom: 4 }}>
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+        <span>
+          <strong>How 5 GB bundles work:</strong> Files are partitioned by size. Click <em>"Download Links"</em> to get a .txt with direct URLs — paste into <strong>IDM / wget / aria2</strong> for real parallel downloading. Or click <em>"Download All Files"</em> to trigger each file download individually in your browser.
+        </span>
       </div>
 
-      {/* Grid of 5GB Chunk Cards */}
-      <div className="grid grid-cols-1 gap-4">
-        {chunks.map((chunk) => {
-          const isDownloading = downloadingChunkId === chunk.id;
-          const isExpanded = expandedChunkId === chunk.id;
-          const maxChunkSize = 5 * 1024 * 1024 * 1024;
-          const percentUsed = Math.min(100, Math.round((chunk.totalSize / maxChunkSize) * 100));
+      {/* Chunk cards */}
+      {chunks.map((chunk) => {
+        const isOpen = expanded === chunk.id;
+        const isDownloading = downloading === chunk.id;
 
-          return (
-            <div
-              key={chunk.id}
-              className={`glass-panel overflow-hidden border-slate-800 transition-all ${
-                isExpanded ? 'border-orange-500/40 shadow-lg shadow-orange-500/5' : ''
-              }`}
-            >
-              {/* Chunk Header */}
-              <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/40">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-orange-400 font-bold font-heading text-lg shadow-inner">
-                    P{chunk.index}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-100 font-heading">
-                        {chunk.title}
-                      </h3>
-                      <span className="badge badge-orange font-mono text-[11px]">
-                        {chunk.formattedSize}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Contains {chunk.fileCount} files • Part {chunk.index} of {chunks.length}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Download Actions */}
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                  
-                  <button
-                    onClick={() => handleDownloadManifest(chunk)}
-                    className="btn-secondary text-xs py-2 px-3"
-                    title="Export File Manifest JSON"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="hidden md:inline">Manifest</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleDownloadChunkZip(chunk)}
-                    disabled={isDownloading}
-                    className="btn-primary text-xs py-2 px-4"
-                  >
-                    {isDownloading ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download 5GB Zip</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setExpandedChunkId(isExpanded ? null : chunk.id)}
-                    className="p-2 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 transition-colors"
-                  >
-                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
+        return (
+          <div key={chunk.id} className="chunk-card">
+            
+            {/* Header */}
+            <div className="chunk-head">
+              <div className="chunk-meta">
+                <div className="chunk-num">P{chunk.index}</div>
+                <div className="chunk-info">
+                  <h3>Part {chunk.index}</h3>
+                  <p>{chunk.fileCount} files</p>
                 </div>
               </div>
 
-              {/* Progress bar during download */}
-              {isDownloading && (
-                <div className="px-5 py-3 bg-orange-950/30 border-t border-orange-500/20">
-                  <div className="flex justify-between text-xs text-orange-300 font-mono mb-1">
-                    <span>{downloadStatusText}</span>
-                    <span>{downloadProgress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300"
-                      style={{ width: `${downloadProgress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="chunk-size-badge">{chunk.formattedSize}</span>
 
-              {/* Expandable File Manifest List */}
-              {isExpanded && (
-                <div className="border-t border-slate-800/80 p-5 bg-slate-950/40">
-                  <div className="flex items-center justify-between text-xs text-slate-400 mb-3 uppercase tracking-wider font-semibold">
-                    <span>Files in this bundle ({chunk.files.length})</span>
-                    <span>File Size</span>
-                  </div>
-                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                    {chunk.files.map((file, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-900/60 border border-slate-800/60 text-xs hover:border-slate-700 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 truncate pr-4">
-                          <span className="text-slate-500 font-mono text-[10px]">{idx + 1}.</span>
-                          <span className="text-slate-200 font-mono truncate">{file.name}</span>
-                          <span className="badge bg-slate-800 text-slate-400 border-slate-700 text-[10px]">
-                            {file.type}
-                          </span>
-                        </div>
-                        <span className="text-orange-400 font-mono font-medium shrink-0">
-                          {file.formattedSize}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => downloadLinkFile(chunk)}
+                  title="Download list of direct URLs (.txt)"
+                >
+                  <Link2 size={12} />
+                  Download Links
+                </button>
+
+                <button
+                  className="btn btn-orange btn-sm"
+                  onClick={() => downloadAllFiles(chunk)}
+                  disabled={isDownloading}
+                  title="Trigger browser download for every file in this bundle"
+                >
+                  {isDownloading ? <Loader2 size={12} className="spin" /> : <Download size={12} />}
+                  {isDownloading ? 'Downloading...' : 'Download All Files'}
+                </button>
+
+                <button
+                  onClick={() => setExpanded(isOpen ? null : chunk.id)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                >
+                  {isOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                </button>
+              </div>
             </div>
-          );
-        })}
-      </div>
+
+            {/* File list (collapsible) */}
+            {isOpen && (
+              <div className="chunk-files-list">
+                {chunk.files.map((file, i) => (
+                  <div key={file.key} className="chunk-file-row">
+                    <span className="chunk-file-name" title={file.name}>
+                      <span style={{ color: 'var(--text-dim)', marginRight: 8, fontSize: 10 }}>{i + 1}.</span>
+                      {file.name}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <span className="chunk-file-size">{file.formattedSize}</span>
+                      {file.url && (
+                        <a
+                          href={file.url}
+                          download={file.name}
+                          className="btn-link"
+                          title="Download this file"
+                        >
+                          <Download size={11} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Active download status */}
+            {isDownloading && (
+              <div className="dl-progress">
+                Sending individual file downloads to browser — check your downloads bar…
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

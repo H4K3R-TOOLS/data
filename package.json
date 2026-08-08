@@ -6,24 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.621.0",
-    "@aws-sdk/s3-request-presigner": "^3.621.0",
-    "canvas-confetti": "^1.9.3",
-    "clsx": "^2.1.1",
-    "jszip": "^3.10.1",
     "lucide-react": "^0.424.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.20",
     "vite": "^5.4.1"
   }
 }
