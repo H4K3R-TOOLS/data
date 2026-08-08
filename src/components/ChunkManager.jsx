@@ -1,19 +1,10 @@
 import React, { useState } from 'react';
-import { Download, ChevronDown, ChevronUp, Link2, FileText, Loader2, ExternalLink } from 'lucide-react';
-import { formatBytes } from '../services/r2Service';
+import { Download, ChevronDown, ChevronUp, Link2, Loader2 } from 'lucide-react';
 
-/**
- * For 5GB chunks we offer two options:
- * 1. Download link-list (.txt) — user pastes in IDM / wget / aria2 to batch-download
- * 2. Sequential browser downloads — triggers <a download> for each file one by one
- *
- * We do NOT try to zip files in the browser — fetching 5GB to RAM would crash the tab.
- */
 export default function ChunkManager({ chunks }) {
   const [expanded, setExpanded] = useState(chunks[0]?.id || null);
   const [downloading, setDownloading] = useState(null);
 
-  // Export a plain-text list of direct URLs for this chunk (IDM/wget compatible)
   const downloadLinkFile = (chunk) => {
     const lines = chunk.files.map(f => f.url || `# ${f.name} (no public URL)`).join('\n');
     const blob = new Blob([lines], { type: 'text/plain' });
@@ -24,11 +15,9 @@ export default function ChunkManager({ chunks }) {
     URL.revokeObjectURL(a.href);
   };
 
-  // Trigger sequential browser downloads for every file in chunk
   const downloadAllFiles = async (chunk) => {
     setDownloading(chunk.id);
     const delay = (ms) => new Promise(r => setTimeout(r, ms));
-
     for (const file of chunk.files) {
       if (!file.url) continue;
       const a = document.createElement('a');
@@ -39,10 +28,8 @@ export default function ChunkManager({ chunks }) {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Small delay so browser doesn't block multiple tabs
       await delay(600);
     }
-
     setDownloading(null);
   };
 
@@ -59,10 +46,12 @@ export default function ChunkManager({ chunks }) {
 
       {/* Info notice */}
       <div className="notice" style={{ marginBottom: 0 }}>
-        <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24">
+          <path stroke="currentColor" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+        </svg>
         <span>
-          <strong>Download Links</strong> → exports a .txt file with direct URLs (paste into IDM/wget/aria2).
-          <strong> Download All Files</strong> → triggers each file individually in your browser.
+          <strong>Download Links</strong> → .txt file with direct URLs (paste into IDM/wget/aria2).
+          {' '}<strong>Download All Files</strong> → triggers each file individually in your browser.
         </span>
       </div>
 
@@ -73,8 +62,8 @@ export default function ChunkManager({ chunks }) {
 
         return (
           <div key={chunk.id} className="chunk-card">
-            
-            {/* Header */}
+
+            {/* Header row */}
             <div className="chunk-head">
               <div className="chunk-meta">
                 <div className="chunk-num">P{chunk.index}</div>
@@ -83,10 +72,10 @@ export default function ChunkManager({ chunks }) {
                   <p>{chunk.fileCount} files</p>
                 </div>
               </div>
-
               <span className="chunk-size-badge">{chunk.formattedSize}</span>
             </div>
 
+            {/* Action buttons */}
             <div className="chunk-actions">
               <button
                 className="btn btn-ghost btn-sm"
@@ -101,28 +90,33 @@ export default function ChunkManager({ chunks }) {
                 className="btn btn-orange btn-sm"
                 onClick={() => downloadAllFiles(chunk)}
                 disabled={isDownloading}
-                title="Trigger browser download for every file in this bundle"
               >
-                {isDownloading ? <Loader2 size={12} className="spin" /> : <Download size={12} />}
+                {isDownloading
+                  ? <Loader2 size={12} className="spin" />
+                  : <Download size={12} />}
                 {isDownloading ? 'Downloading...' : 'Download All Files'}
               </button>
 
               <button
                 onClick={() => setExpanded(isOpen ? null : chunk.id)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', marginLeft: 'auto' }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', padding: '4px', marginLeft: 'auto'
+                }}
               >
                 {isOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
               </button>
             </div>
-          </div>
 
-            {/* File list (collapsible) */}
+            {/* Collapsible file list */}
             {isOpen && (
               <div className="chunk-files-list">
                 {chunk.files.map((file, i) => (
                   <div key={file.key} className="chunk-file-row">
                     <span className="chunk-file-name" title={file.name}>
-                      <span style={{ color: 'var(--text-dim)', marginRight: 8, fontSize: 10 }}>{i + 1}.</span>
+                      <span style={{ color: 'var(--text-dim)', marginRight: 8, fontSize: 10 }}>
+                        {i + 1}.
+                      </span>
                       {file.name}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -132,7 +126,7 @@ export default function ChunkManager({ chunks }) {
                           href={file.url}
                           download={file.name}
                           className="btn-link"
-                          title="Download this file"
+                          title="Download"
                         >
                           <Download size={11} />
                         </a>
@@ -143,12 +137,13 @@ export default function ChunkManager({ chunks }) {
               </div>
             )}
 
-            {/* Active download status */}
+            {/* Download status bar */}
             {isDownloading && (
               <div className="dl-progress">
-                Sending individual file downloads to browser — check your downloads bar…
+                Sending file downloads to browser — check your downloads bar…
               </div>
             )}
+
           </div>
         );
       })}
