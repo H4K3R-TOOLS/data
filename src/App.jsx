@@ -4,28 +4,18 @@ import FileList from './components/FileList';
 import ChunkManager from './components/ChunkManager';
 import { fetchR2Objects, groupIntoChunks, formatBytes } from './services/r2Service';
 
-// Config comes 100% from environment variables (set in .env or Vercel dashboard)
-const ENV = {
-  accountId:       process.env.R2_ACCOUNT_ID        || '',
-  accessKeyId:     process.env.R2_ACCESS_KEY_ID      || '',
-  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY  || '',
-  bucketName:      process.env.R2_BUCKET_NAME        || '',
-  publicUrl:       process.env.R2_PUBLIC_URL         || '',
-};
-
 export default function App() {
   const [tab, setTab] = useState('files');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [data, setData] = useState({ files: [], totalSize: 0, fileCount: 0 });
+  const [data, setData] = useState({ files: [], totalSize: 0, fileCount: 0, bucket: '' });
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchR2Objects(ENV);
-      if (res.error) setError(res.error);
-      else setData(res);
+      const res = await fetchR2Objects();
+      setData(res);
     } catch (e) {
       setError(e.message || 'Failed to connect to R2 bucket.');
     } finally {
@@ -47,7 +37,7 @@ export default function App() {
             <Cloud size={18} />
           </div>
           <div>
-            <h1>R2 Bucket — {ENV.bucketName || 'gallery'}</h1>
+            <h1>R2 Bucket — {data.bucket || 'gallery'}</h1>
             <p>Cloudflare R2 Storage Manager</p>
           </div>
         </div>
@@ -74,7 +64,7 @@ export default function App() {
           <div className="stat-card">
             <div className="stat-label">Total Storage</div>
             <div className="stat-value">{data.formattedTotalSize || '0 B'}</div>
-            <div className="stat-sub">in bucket <strong>{ENV.bucketName}</strong></div>
+            <div className="stat-sub">in bucket <strong>{data.bucket}</strong></div>
             <div className="prog-bar">
               <div
                 className="prog-fill"
@@ -124,8 +114,9 @@ export default function App() {
           <span>Loading bucket data…</span>
         </div>
       ) : error ? (
-        <div style={{ color: 'var(--text-muted)', padding: 24, fontSize: 13 }}>
-          Could not load bucket. Check that your <code>R2_SECRET_ACCESS_KEY</code> is set in environment variables and R2 CORS is configured.
+        <div className="notice" style={{ marginTop: 0 }}>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" d="M12 9v4m0 4h.01M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+          <span>{error}</span>
         </div>
       ) : tab === 'files' ? (
         <FileList files={data.files} />
