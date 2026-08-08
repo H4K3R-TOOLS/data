@@ -1,22 +1,18 @@
-// api/admin-settings.js — GET and POST site settings (stored in R2 as _config.json)
+// api/admin-settings.js
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { verifyToken } from './admin-auth.js';
 
 const _c = (s) => Buffer.from(s, 'base64').toString('utf8');
 
 const CFG = {
-  accountId:   process.env.R2_ACCOUNT_ID   || _c('ODM0Y2RkNmFjYjdmYzI0MzQyMTk3NDk0OTQ1Yjk4YWU='),
-  accessKeyId: process.env.R2_ACCESS_KEY_ID || _c('OTI2N2QxNzI5NTk5ZTViY2Q5ODIxNmIwYmU2M2RhNTM='),
-  secretKey:   process.env.R2_SECRET_ACCESS_KEY || _c('MGFhOWU4Nzk1ZjIwMzQ2ZWYyODBmMWI0YzEwNGQzNDdlNDkxMDRmYzI5MjJiZmYwYmZkYTQxMTFjNWM4NGU1ZA=='),
-  bucket:      process.env.R2_BUCKET_NAME  || _c('Z2FsbGVyeQ=='),
+  accountId:   process.env.R2_ACCOUNT_ID        || _c('ODM0Y2RkNmFjYjdmYzI0MzQyMTk3NDk0OTQ1Yjk4YWU='),
+  accessKeyId: process.env.R2_ACCESS_KEY_ID      || _c('OTI2N2QxNzI5NTk5ZTViY2Q5ODIxNmIwYmU2M2RhNTM='),
+  secretKey:   process.env.R2_SECRET_ACCESS_KEY  || _c('MGFhOWU4Nzk1ZjIwMzQ2ZWYyODBmMWI0YzEwNGQzNDdlNDkxMDRmYzI5MjJiZmYwYmZkYTQxMTFjNWM4NGU1ZA=='),
+  bucket:      process.env.R2_BUCKET_NAME        || _c('Z2FsbGVyeQ=='),
 };
 
 const CONFIG_KEY = '_config.json';
-
-const DEFAULT_CONFIG = {
-  mainPageEnabled: true,
-  dataLimitGB: 0,   // 0 = show all
-};
+const DEFAULT_CONFIG = { mainPageEnabled: true, dataLimitGB: 0 };
 
 function getClient() {
   return new S3Client({
@@ -28,8 +24,8 @@ function getClient() {
 
 async function readConfig(client) {
   try {
-    const res = await client.send(new GetObjectCommand({ Bucket: CFG.bucket, Key: CONFIG_KEY }));
-    const body = await res.Body.transformToString();
+    const r = await client.send(new GetObjectCommand({ Bucket: CFG.bucket, Key: CONFIG_KEY }));
+    const body = await r.Body.transformToString();
     return { ...DEFAULT_CONFIG, ...JSON.parse(body) };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -45,8 +41,23 @@ async function writeConfig(client, config) {
   }));
 }
 
+// Manually parse JSON body since Vercel doesn't auto-parse
+async function parseBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(raw)); }
+      catch { resolve({}); }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 export default async function handler(req, res) {
-  // Auth check — token in Authorization header
+  // CORS for same-origin
+  res.setHeader('Cache-Control', 'no-store');
+
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.replace('Bearer ', '').trim();
   const payload = verifyToken(token);
@@ -63,12 +74,15 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    const body = await parseBody(req);
     const current = await readConfig(client);
+
     const updated = {
       ...current,
-      ...(typeof req.body.mainPageEnabled === 'boolean' ? { mainPageEnabled: req.body.mainPageEnabled } : {}),
-      ...(typeof req.body.dataLimitGB === 'number' ? { dataLimitGB: req.body.dataLimitGB } : {}),
+      ...(typeof body.mainPageEnabled === 'boolean' ? { mainPageEnabled: body.mainPageEnabled } : {}),
+      ...(typeof body.dataLimitGB === 'number'      ? { dataLimitGB: body.dataLimitGB }         : {}),
     };
+
     await writeConfig(client, updated);
     return res.status(200).json({ ok: true, config: updated });
   }

@@ -55,13 +55,14 @@ export default function ChunkManager({ chunks }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="chunks-grid">
 
       {/* Info notice */}
-      <div className="notice" style={{ marginBottom: 4 }}>
+      <div className="notice" style={{ marginBottom: 0 }}>
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
         <span>
-          <strong>How 5 GB bundles work:</strong> Files are partitioned by size. Click <em>"Download Links"</em> to get a .txt with direct URLs — paste into <strong>IDM / wget / aria2</strong> for real parallel downloading. Or click <em>"Download All Files"</em> to trigger each file download individually in your browser.
+          <strong>Download Links</strong> → exports a .txt file with direct URLs (paste into IDM/wget/aria2).
+          <strong> Download All Files</strong> → triggers each file individually in your browser.
         </span>
       </div>
 
@@ -83,36 +84,37 @@ export default function ChunkManager({ chunks }) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="chunk-size-badge">{chunk.formattedSize}</span>
-
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => downloadLinkFile(chunk)}
-                  title="Download list of direct URLs (.txt)"
-                >
-                  <Link2 size={12} />
-                  Download Links
-                </button>
-
-                <button
-                  className="btn btn-orange btn-sm"
-                  onClick={() => downloadAllFiles(chunk)}
-                  disabled={isDownloading}
-                  title="Trigger browser download for every file in this bundle"
-                >
-                  {isDownloading ? <Loader2 size={12} className="spin" /> : <Download size={12} />}
-                  {isDownloading ? 'Downloading...' : 'Download All Files'}
-                </button>
-
-                <button
-                  onClick={() => setExpanded(isOpen ? null : chunk.id)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
-                >
-                  {isOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                </button>
-              </div>
+              <span className="chunk-size-badge">{chunk.formattedSize}</span>
             </div>
+
+            <div className="chunk-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => downloadLinkFile(chunk)}
+                title="Download list of direct URLs (.txt)"
+              >
+                <Link2 size={12} />
+                Download Links
+              </button>
+
+              <button
+                className="btn btn-orange btn-sm"
+                onClick={() => downloadAllFiles(chunk)}
+                disabled={isDownloading}
+                title="Trigger browser download for every file in this bundle"
+              >
+                {isDownloading ? <Loader2 size={12} className="spin" /> : <Download size={12} />}
+                {isDownloading ? 'Downloading...' : 'Download All Files'}
+              </button>
+
+              <button
+                onClick={() => setExpanded(isOpen ? null : chunk.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', marginLeft: 'auto' }}
+              >
+                {isOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </button>
+            </div>
+          </div>
 
             {/* File list (collapsible) */}
             {isOpen && (

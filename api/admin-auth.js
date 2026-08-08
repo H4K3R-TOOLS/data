@@ -3,11 +3,7 @@ import { createHmac } from 'crypto';
 
 const _c = (s) => Buffer.from(s, 'base64').toString('utf8');
 
-// Admin password (base64 encoded) — override with ADMIN_PASSWORD env var
-// Default encoded: "changeme123" — set your own via env
-const ADMIN_PASS_ENCODED = 'Y2hhbmdlbWUxMjM=';
-
-// Token signing secret — derived from the R2 secret key bytes
+const ADMIN_PASS_ENCODED = 'Y2hhbmdlbWUxMjM='; // "changeme123"
 const SIGN_SECRET = _c('MGFhOWU4Nzk1ZjIwMzQ2ZWYyODBmMWI0YzEwNGQzNDdlNDkxMDRmYzI5MjJiZmYwYmZkYTQxMTFjNWM4NGU1ZA==');
 
 export function signToken(payload) {
@@ -23,7 +19,6 @@ export function verifyToken(token) {
     const expected = createHmac('sha256', SIGN_SECRET).update(data).digest('hex');
     if (sig !== expected) return null;
     const payload = JSON.parse(data);
-    // Token valid for 12 hours
     if (Date.now() - payload.iat > 12 * 60 * 60 * 1000) return null;
     return payload;
   } catch {
@@ -31,10 +26,25 @@ export function verifyToken(token) {
   }
 }
 
+// Manually parse JSON body (Vercel doesn't auto-parse like Express)
+async function parseBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      try { resolve(JSON.parse(raw)); }
+      catch { resolve({}); }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { password } = req.body || {};
+  const body = await parseBody(req);
+  const { password } = body;
   const correctPass = process.env.ADMIN_PASSWORD || _c(ADMIN_PASS_ENCODED);
 
   if (!password || password !== correctPass) {
